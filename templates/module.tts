@@ -1,0 +1,6 @@
+import {IModule, module} from 'angular';
+import {#name#Component} from './#name#Component';
+
+export const #moduleName#Module: IModule = module('#moduleId#', [])
+  .component('#componentString#', new #name#Component());
+

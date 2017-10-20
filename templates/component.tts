@@ -1,0 +1,15 @@
+import {IComponentOptions, IControllerConstructor, Injectable} from 'angular';
+import {#name#Controller} from './#name#Controller';
+
+export class #name#Component implements IComponentOptions {
+  public bindings: {[name: string]: string};
+  public controller: Injectable<IControllerConstructor>;
+  public controllerAs: string;
+  public template: string;
+
+  constructor() {
+    this.bindings = {};
+    this.controller = #name#Controller;
+    this.controllerAs = '#controllerAs#';
+  }
+}
