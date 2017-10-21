@@ -1,5 +1,20 @@
+#!/usr/bin/env node
+
 const {resolve} = require('path')
-const {readFileSync, writeFileSync} = require('fs')
+const {existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync} = require('fs')
+
+const readParentModuleName = (path) => {
+  const parentDir = resolve(path, '../')
+  const moduleFile = readdirSync(parentDir).filter(dirname => dirname.match(/Module.ts$/)).join('')
+  const fileContents = readFileSync(resolve(parentDir, moduleFile), 'utf8')
+  return fileContents.split('module(\'')[1].split('\',')[0]
+}
+
+const formatModuleName = (name) => name.charAt(0).toLowerCase() + name.slice(1)
+
+const generateModuleName = (path, elementName) => {
+  return readParentModuleName(path) + '.' + formatModuleName(elementName)
+}
 
 const render = (template, model) => {
   Object.keys(model)
@@ -17,10 +32,18 @@ const generateFile = (path, elementType, elementName) => {
   const template = readFileSync(getTemplatePath(elementType), 'utf8')
   const content = render(template, {
     name: elementName,
-    componentString: elementName,
-    moduleId: elementName,
-    controllerAs: elementName,
+    componentString: formatModuleName(elementName),
+    moduleName: formatModuleName(elementName),
+    moduleId: generateModuleName(path, elementName),
+    controllerAs: elementName.toLowerCase(),
   })
+
+  readParentModuleName(path)
+
+  const dir = resolve(process.cwd(), path)
+  if (!existsSync(dir)){
+      mkdirSync(dir);
+  }
   writeFileSync(resolve(path, `./${elementName}${elementType}.ts`), content)
 }
 
