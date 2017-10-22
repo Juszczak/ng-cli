@@ -3,17 +3,25 @@
 const {resolve} = require('path')
 const {existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync} = require('fs')
 
+const getParentDirectory = (path) => resolve(path, '../')
+
+const getParentModuleFilePath = (path) => readdirSync(getParentDirectory(path)).filter(dirname => dirname.match(/Module.ts$/)).join('')
+
+const readParentModuleFileContent = (path) => {
+  const moduleFile = getParentModuleFilePath(path)
+  return moduleFile ? readFileSync(resolve(getParentDirectory(path), moduleFile), 'utf8') : null
+}
+
 const readParentModuleName = (path) => {
-  const parentDir = resolve(path, '../')
-  const moduleFile = readdirSync(parentDir).filter(dirname => dirname.match(/Module.ts$/)).join('')
-  const fileContents = readFileSync(resolve(parentDir, moduleFile), 'utf8')
-  return fileContents.split('module(\'')[1].split('\',')[0]
+  const parentModuleContent = readParentModuleFileContent(path)
+  return parentModuleContent ? parentModuleContent.split('module(\'')[1].split('\',')[0] : ''
 }
 
 const formatModuleName = (name) => name.charAt(0).toLowerCase() + name.slice(1)
 
 const generateModuleName = (path, elementName) => {
-  return readParentModuleName(path) + '.' + formatModuleName(elementName)
+  const parentModuleName = readParentModuleName(path)
+  return (parentModuleName ? parentModuleName + '.' : '') + formatModuleName(elementName)
 }
 
 const render = (template, model) => {
@@ -28,17 +36,43 @@ const render = (template, model) => {
 
 const getTemplatePath = (templateType) => resolve(__dirname, `./templates/${templateType.toLowerCase()}.tts`)
 
+const addAsParentDependency = (path, elementName) => {
+  const parentModuleFileContent = readParentModuleFileContent(path)
+  const hasParentModule = !!parentModuleFileContent
+  let moduleContentsWithImport = ''
+  if (hasParentModule) {
+    const lines = parentModuleFileContent.match(/[^\r\n]+/g);
+    let imported = false
+    let hasPreviousLineImport = true
+    for (let lineNr = 0; lineNr < lines.length; lineNr++) {
+      hasPreviousLineImport =  /^(\s*)import/.test(lines[lineNr - 1]) || lineNr === 0
+      const hasCurrentLineImport =  /^(\s*)import/.test(lines[lineNr]) || lineNr === 0
+      if (hasPreviousLineImport && !hasCurrentLineImport && !imported) {
+        const splittedPath = path.split('/')
+        const currentDir = splittedPath[splittedPath.length - 1]
+        const importString = `import {${formatModuleName(elementName)}Module} from './${currentDir}/${elementName}Module';`
+        lines[lineNr] = `${importString}\n\n${lines[lineNr]}`
+        imported = true
+      }
+    }
+    moduleContentsWithImport = lines.join('\n')
+
+    const moduleContentWithoutDependency = moduleContentsWithImport.split(']');
+    return moduleContentWithoutDependency.join(`\n  ${formatModuleName(elementName)}.name,\n]`)
+  }
+}
+
 const generateFile = (path, elementType, elementName) => {
   const template = readFileSync(getTemplatePath(elementType), 'utf8')
+  const moduleId = generateModuleName(path, elementName)
+  const moduleName = formatModuleName(elementName)
   const content = render(template, {
     name: elementName,
     componentString: formatModuleName(elementName),
-    moduleName: formatModuleName(elementName),
-    moduleId: generateModuleName(path, elementName),
+    moduleName,
+    moduleId,
     controllerAs: elementName.toLowerCase(),
   })
-
-  readParentModuleName(path)
 
   const dir = resolve(process.cwd(), path)
   if (!existsSync(dir)){
@@ -50,6 +84,11 @@ const generateFile = (path, elementType, elementName) => {
 const generate = (path, name) => {
   const types = ['Component', 'Controller', 'Module']
   types.forEach(type => generateFile(path, type, name))
+
+  const parentModule = addAsParentDependency(path, name)
+  if (parentModule) {
+    writeFileSync(resolve(getParentDirectory(path), getParentModuleFilePath(path)), parentModule)
+  }
   writeFileSync(resolve(path, `./${name}.html`))
 }
 
